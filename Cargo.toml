@@ -1,0 +1,10 @@
+[package]
+name = "pwrtest"
+version = "1.0.0"
+authors = ["Kamil Koczurek <kek@semihalf.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33.0"
