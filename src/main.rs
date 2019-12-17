@@ -75,7 +75,9 @@ fn pwr_button(enable: bool) {
 		.args(&[format!(
 			"pwr_button:{}",
 			if enable { "press" } else { "release" }
-		)]);
+		)])
+		.spawn()
+		.unwrap();
 }
 
 fn poweroff() {
@@ -98,7 +100,9 @@ fn wallpower(enable: bool) {
 		.args(&[format!(
 			"servo_v4_role:{}",
 			if enable { "src" } else { "snk" }
-		)]);
+		)])
+		.spawn()
+		.unwrap();
 }
 
 fn battery_pct() -> i32 {
@@ -126,11 +130,11 @@ fn charge_to(value: i32) {
 	use std::{thread::sleep, time::Duration};
 
 	if battery_pct() < value {
-		print!("charging... ");
+		println!("charging... ");
 		poweroff();
 
 		while battery_pct() < value {
-			print!("{} ", battery_pct());
+			println!("{} ", battery_pct());
 			wallpower(true);
 			sleep(Duration::from_secs(30));
 		}
