@@ -1,3 +1,5 @@
+use std::{process::Command, str::from_utf8, thread::sleep, time::Duration, io::Write};
+
 struct Conf {
 	tests: Vec<String>,
 	battery_min: i32,
@@ -70,7 +72,6 @@ fn get_config() -> Conf {
 }
 
 fn pwr_button(enable: bool) {
-	use std::process::Command;
 	Command::new("dut-control")
 		.args(&[format!(
 			"pwr_button:{}",
@@ -81,21 +82,22 @@ fn pwr_button(enable: bool) {
 }
 
 fn poweroff() {
-	use std::{thread::sleep, time::Duration};
 	pwr_button(true);
 	sleep(Duration::from_secs(3));
 	pwr_button(false);
+	sleep(Duration::from_secs(10));
+	println!("powered off");
 }
 
 fn poweron() {
-	use std::{thread::sleep, time::Duration};
 	pwr_button(true);
 	sleep(Duration::from_secs(1));
 	pwr_button(false);
+	sleep(Duration::from_secs(10));
+	println!("powered on");
 }
 
 fn wallpower(enable: bool) {
-	use std::process::Command;
 	Command::new("dut-control")
 		.args(&[format!(
 			"servo_v4_role:{}",
@@ -105,9 +107,7 @@ fn wallpower(enable: bool) {
 		.unwrap();
 }
 
-fn battery_pct() -> i32 {
-	use std::{process::Command, str::from_utf8};
-
+fn battery_pct_try() -> Option<i32> {
 	let stdout = Command::new("dut-control")
 		.args(&["battery_charge_percent"])
 		.output()
@@ -119,34 +119,55 @@ fn battery_pct() -> i32 {
 		.to_owned();
 
 	let parts: Vec<&str> = stdout.split(':').collect();
-	let pct_text = parts[1]; // with \n
 
-	pct_text[..pct_text.len() - 1] // drop \n
-		.parse()
-		.expect("`dut-control battery_charge_percent` output is in form A:B but B is not a valid i32")
+	if 1 >= parts.len() {
+		return None;
+	}
+
+	let pct_text = parts[1]; // with \n
+	let maybe_pct = pct_text[..pct_text.len() - 1] // drop \n
+		.parse();
+
+	if let Ok(pct) = maybe_pct {
+		Some(pct)
+	} else {
+		None
+	}
+}
+
+fn battery_pct() -> i32 {
+	let mut res = battery_pct_try();
+	while res.is_none() {
+		print!("E ");
+		std::io::stdout().flush().unwrap();
+		sleep(Duration::from_secs(30));
+		res = battery_pct_try();
+	}
+
+	res.unwrap()
 }
 
 fn charge_to(value: i32) {
-	use std::{thread::sleep, time::Duration};
-
+	wallpower(false);
 	if battery_pct() < value {
-		println!("charging... ");
 		poweroff();
+		print!("charging... ");
+		std::io::stdout().flush().unwrap();
 
 		while battery_pct() < value {
-			println!("{} ", battery_pct());
+			print!("{} ", battery_pct());
+			std::io::stdout().flush().unwrap();
 			wallpower(true);
 			sleep(Duration::from_secs(30));
 		}
 
+		println!("done");
 		wallpower(false);
 		poweron();
 	}
 }
 
 fn run_test(board: &str, autotest_dir: &str, ip: &str, test: &str) -> String {
-	use std::{process::Command, str::from_utf8};
-
 	let out = Command::new("test_that")
 		.args(&[
 			&format!("--board={}", board),
