@@ -1,11 +1,24 @@
 use std::{
 	time::{Duration, SystemTime},
-	process::Command,
 	str::from_utf8,
 	thread::sleep,
 	net::IpAddr,
 	io::Write,
 };
+
+macro_rules! dut_control {
+    ($($arg:tt)*) => ({
+		::std::process::Command::new("dut-control")
+			.args(&[ $($arg)* ])
+    })
+}
+
+macro_rules! test_that {
+    ($($arg:tt)*) => ({
+		::std::process::Command::new("test_that")
+			.args(&[ $($arg)* ])
+    })
+}
 
 struct Conf {
 	tests: Vec<String>,
@@ -15,6 +28,17 @@ struct Conf {
 	out_dir: String,
 	board: String,
 	ip: String,
+}
+
+fn time_to_string(dur: Duration) -> String {
+	let secs = dur.as_secs() as f32;
+	if secs < 60.0 {
+		format!("{:.2}s", secs)
+	} else if secs < 3600.0 {
+		format!("{:.2}m", secs / 60.0)
+	} else {
+		format!("{:.2}h", secs / 3600.0)
+	}
 }
 
 fn battery_validator(arg: String) -> Result<(), String> {
@@ -67,9 +91,8 @@ fn get_config() -> Conf {
 			.short("t")
 			.long("charge_to")
 			.value_name("%TO")
-			.help("If the DUT is charged to this value")
+			.help("the DUT is charged to this value (default=%FROM)")
 			.validator(battery_validator)
-			.required(true)
 		)
 		.arg(Arg::with_name("autotest_dir")
 			.short("a")
@@ -104,19 +127,25 @@ fn get_config() -> Conf {
 			.long("tests")
 			.value_name("TESTS")
 			.help("comma separated test names, e.g. 'power_Display,power_Idle'")
+			.value_delimiter(",")
 			.required(true)
 		)
 		.get_matches();
 
 	/* All arguments are prevalidated, so unwraps below are all safe */
+	let tests = matches.values_of("tests").unwrap().map(&str::to_owned).collect();
+	let charge_from = matches.value_of("charge_from").unwrap().parse().unwrap();
+	let charge_to = matches.value_of("charge_to").map(|s| s.parse::<i32>().unwrap()).unwrap_or(charge_from);
+	let autotest_dir = matches.value_of("autotest_dir").unwrap().to_owned();
+	let out_dir = matches.value_of("out_dir").unwrap().to_owned();
+	let board = matches.value_of("board").unwrap().to_owned();
+	let ip = matches.value_of("ip").unwrap().to_owned();
+
 	let conf = Conf {
-		tests: matches.value_of("tests").unwrap().split(",").map(|r| r.to_owned()).collect(),
-		charge_from: matches.value_of("charge_from").unwrap().parse().unwrap(),
-		charge_to: matches.value_of("charge_to").unwrap().parse().unwrap(),
-		autotest_dir: matches.value_of("autotest_dir").unwrap().to_owned(),
-		out_dir: matches.value_of("out_dir").unwrap().to_owned(),
-		board: matches.value_of("board").unwrap().to_owned(),
-		ip: matches.value_of("ip").unwrap().to_owned(),
+		tests,
+		charge_from, charge_to,
+		autotest_dir, out_dir,
+		board, ip,
 	};
 
 	if conf.charge_from > conf.charge_to {
@@ -128,11 +157,13 @@ fn get_config() -> Conf {
 }
 
 fn pwr_button(enable: bool) {
-	Command::new("dut-control")
-		.args(&[format!(
-			"pwr_button:{}",
-			if enable { "press" } else { "release" }
-		)])
+	let pwr_button = if enable {
+		"pwr_button:press"
+	} else {
+		"pwr_button:release"
+	};
+
+	dut_control![pwr_button]
 		.spawn()
 		.unwrap();
 }
@@ -154,18 +185,19 @@ fn poweron() {
 }
 
 fn wallpower(enable: bool) {
-	Command::new("dut-control")
-		.args(&[format!(
-			"servo_v4_role:{}",
-			if enable { "src" } else { "snk" }
-		)])
+	let servo_v4_role = if enable {
+		"servo_v4_role:src"
+	} else {
+		"servo_v4_role:snk"
+	};
+
+	dut_control![servo_v4_role]
 		.spawn()
 		.expect("couldn't run dut-control to set wallpower, are you in cros_sdk chroot?");
 }
 
 fn battery_pct_try() -> Option<i32> {
-	let stdout = Command::new("dut-control")
-		.args(&["battery_charge_percent"])
+	let stdout = dut_control!["battery_charge_percent"]
 		.output()
 		.expect("failed to probe for battery charge level, are you in cros_sdk chroot?")
 		.stdout;
@@ -204,33 +236,40 @@ fn battery_pct() -> i32 {
 }
 
 fn charge(from: i32, to: i32) {
-	wallpower(false);
 	if battery_pct() < from {
+		wallpower(true);
+
 		poweroff();
 		print!("below {}%! charging... ", from);
 		std::io::stdout().flush().unwrap();
 
-		while battery_pct() < to {
-			print!("{} ", battery_pct());
-			std::io::stdout().flush().unwrap();
-			wallpower(true);
-			sleep(Duration::from_secs(30));
+		let mut old_pct = -1;
+		let mut pct = battery_pct();
+		while pct < to {
+			if old_pct != pct {
+				old_pct = pct;
+				print!("{} ", pct);
+				std::io::stdout().flush().unwrap();
+			}
+
+			sleep(Duration::from_secs(10));
+			pct = battery_pct();
 		}
 
 		println!("done");
-		wallpower(false);
 		poweron();
 	}
+
+	wallpower(false);
 }
 
 fn run_test(board: &str, autotest_dir: &str, ip: &str, test: &str) -> String {
-	let out = Command::new("test_that")
-		.args(&[
+	let out = test_that![
 			&format!("--board={}", board),
 			&format!("--autotest_dir={}", autotest_dir),
 			ip,
 			test,
-		])
+		]
 		.output()
 		.expect(&format!("failed to run test {} on {}", test, ip));
 
@@ -247,7 +286,9 @@ fn main() {
 	for test in &config.tests {
 		charge(config.charge_from, config.charge_to);
 
-		println!("running test {}…", test);
+		print!("running test {}... ", test);
+		std::io::stdout().flush().unwrap();
+
 		let test_beginning = SystemTime::now();
 
 		let out = run_test(&config.board, &config.autotest_dir, &config.ip, test);
@@ -259,13 +300,13 @@ fn main() {
 			out
 		).expect(&write_err_msg);
 
-		println!("{} time: {}mins", test, test_beginning.elapsed().unwrap().as_secs() as f32 / 60.0);
+		print!("took: {}, ", time_to_string(test_beginning.elapsed().unwrap()));
 		println!("battery: {}%", battery_pct());
 
 		test_n += 1;
 	}
 
 	println!("=================================");
-	println!("total time: {}mins", beginning.elapsed().unwrap().as_secs() as f32 / 60.0);
+	println!("total time: {}", time_to_string(beginning.elapsed().unwrap()));
 	println!("=================================");
 }
