@@ -24,7 +24,7 @@ OPTIONS:
 
 Example:
 ```
-(cr) ((3f34d37...)) kamil@kekPC ~/trunk/src/scripts $ pwrtest -f=80 -t=85 -a=/home/kamil/trunk/src/third_party/autotest/files --board=caroline --ip=192.168.0.162 -o="./pwrtest" --tests="power_WebGL,power_WebGL"
+$ pwrtest -f=80 -t=85 -a=/home/kamil/trunk/src/third_party/autotest/files --board=caroline --ip=192.168.0.162 -o="./pwrtest" --tests="power_WebGL,power_WebGL"
 powered off
 below 80%! charging from 79 to 85...
 ███████████████████████████████████████████████████░░░░░░░░░░░░ 84/100
