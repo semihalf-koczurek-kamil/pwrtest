@@ -168,20 +168,75 @@ fn pwr_button(enable: bool) {
 		.unwrap();
 }
 
+fn powerstate_try() -> Option<String> {
+	let stdout = dut_control!["ec_system_powerstate"]
+		.output()
+		.unwrap()
+		.stdout;
+
+	let stdout = from_utf8(&stdout)
+		.expect("dut-control output is not valid utf8")
+		.to_owned();
+
+	let parts: Vec<&str> = stdout.split(':').collect();
+
+	if 1 >= parts.len() {
+		return None;
+	}
+
+	let state_with_newline = parts[1];
+	let res = state_with_newline
+		[..state_with_newline.len() - 1] //drop the newline
+		.to_owned();
+
+	Some(res)
+}
+
+fn powerstate() -> String {
+	let mut res = powerstate_try();
+	while res.is_none() {
+		println!("failed to retrieve ec_system_powerstate, retrying in 10s...");
+		sleep(Duration::from_secs(10));
+		res = powerstate_try();
+	}
+
+	res.unwrap()
+}
+
+
+fn powered_on() -> bool {
+	const OFF: u8 = b'G';
+	const ON: u8 = b'S';
+
+	let powerstate = powerstate();
+
+	if powerstate.bytes().next() == Some(ON) {
+		true
+	} else if powerstate.bytes().next() == Some(OFF) {
+		false
+	} else {
+		panic!("invalid powerstate: {}", powerstate);
+	}
+}
+
 fn poweroff() {
-	pwr_button(true);
-	sleep(Duration::from_secs(3));
-	pwr_button(false);
-	sleep(Duration::from_secs(10));
-	println!("powered off");
+	if powered_on() {
+		pwr_button(true);
+		sleep(Duration::from_secs(3));
+		pwr_button(false);
+		sleep(Duration::from_secs(10));
+		println!("powered off");
+	}
 }
 
 fn poweron() {
-	pwr_button(true);
-	sleep(Duration::from_secs(1));
-	pwr_button(false);
-	sleep(Duration::from_secs(10));
-	println!("powered on");
+	if !powered_on() {
+		pwr_button(true);
+		sleep(Duration::from_secs(1));
+		pwr_button(false);
+		sleep(Duration::from_secs(10));
+		println!("powered on");
+	}
 }
 
 fn wallpower(enable: bool) {
@@ -226,8 +281,7 @@ fn battery_pct_try() -> Option<i32> {
 fn battery_pct() -> i32 {
 	let mut res = battery_pct_try();
 	while res.is_none() {
-		print!("E ");
-		std::io::stdout().flush().unwrap();
+		println!("failed to retrieve battery_charge_percent, retrying in 30s...");
 		sleep(Duration::from_secs(30));
 		res = battery_pct_try();
 	}
@@ -236,27 +290,29 @@ fn battery_pct() -> i32 {
 }
 
 fn charge(from: i32, to: i32) {
-	if battery_pct() < from {
+	let pct = battery_pct();
+	if pct < from {
 		wallpower(true);
 
 		poweroff();
-		print!("below {}%! charging... ", from);
-		std::io::stdout().flush().unwrap();
+		println!("below {}%! charging from {} to {}...", from, pct, to);
 
-		let mut old_pct = -1;
-		let mut pct = battery_pct();
+		let bar = indicatif::ProgressBar::new(100);
+		bar.inc(pct as u64);
+
+		let mut old_pct = pct;
+		let mut pct = pct;
 		while pct < to {
 			if old_pct != pct {
+				bar.inc((pct - old_pct) as u64);
 				old_pct = pct;
-				print!("{} ", pct);
-				std::io::stdout().flush().unwrap();
 			}
 
 			sleep(Duration::from_secs(10));
 			pct = battery_pct();
 		}
 
-		println!("done");
+		bar.finish_at_current_pos();
 		poweron();
 	}
 
@@ -300,8 +356,7 @@ fn main() {
 			out
 		).expect(&write_err_msg);
 
-		print!("took: {}, ", time_to_string(test_beginning.elapsed().unwrap()));
-		println!("battery: {}%", battery_pct());
+		println!("took: {}, ", time_to_string(test_beginning.elapsed().unwrap()));
 
 		test_n += 1;
 	}
