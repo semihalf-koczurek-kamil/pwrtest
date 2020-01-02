@@ -24,19 +24,16 @@ OPTIONS:
 
 Example:
 ```
-(cr) ((3f34d37...)) kamil@kekPC ~/trunk/src/scripts $ pwrtest -b=92 -a=/home/kamil/trunk/src/third_party/autotest/files --board=caroline --ip=10.0.0.85 -o="./pwrtest" --tests=power_WebGL,power_WebGL
+(cr) ((3f34d37...)) kamil@kekPC ~/trunk/src/scripts $ pwrtest -f=80 -t=85 -a=/home/kamil/trunk/src/third_party/autotest/files --board=caroline --ip=192.168.0.162 -o="./pwrtest" --tests="power_WebGL,power_WebGL"
 powered off
-charging... 89 90 90 90 90 90 90 91 91 91 91 91 91 91 done
+below 80%! charging from 79 to 85...
+███████████████████████████████████████████████████░░░░░░░░░░░░ 84/100
 powered on
-running test power_WebGL…
-battery: 89%
-powered off
-charging... 89 89 89 90 90 90 90 90 90 91 91 91 91 91 91 91 done
-powered on
-running test power_WebGL…
-battery: 89%
-(cr) ((3f34d37...)) kamil@kekPC ~/trunk/src/scripts $ ls ./pwrtest
-test_no_1__power_WebGL__10.0.0.85  test_no_2__power_WebGL__10.0.0.85
+running test power_WebGL... took: 4.98m, 
+running test power_WebGL... took: 4.40m, 
+=================================
+total time: 27.33m
+=================================
 ```
 
 Building prerequesites:
