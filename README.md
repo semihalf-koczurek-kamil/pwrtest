@@ -39,6 +39,17 @@ battery: 89%
 test_no_1__power_WebGL__10.0.0.85  test_no_2__power_WebGL__10.0.0.85
 ```
 
-The program assumes that:
-- the DUT is turned on and left on login screen
-- the power button isn't locked as pressed (e.g. via `dut-control pwr_button:press`)
+Building prerequesites:
+* git
+* cargo
+
+Building:
+```
+git clone https://github.com/semihalf-koczurek-kamil/pwrtest
+cd pwrtest
+cargo build
+```
+
+To use, copy the binary (`target/debug/pwrtest`) to `<chromiumos_source>/chroot/usr/bin/`.
+
+Note: The program assumes that the power button isn't locked as pressed (e.g. via `dut-control pwr_button:press`).
